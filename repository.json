@@ -1,0 +1,12 @@
+{
+  "author": "Christer Lundin",
+  "gitHubUrl": "https://github.com/positionguard/positionguard-hubitat",
+  "packages": [
+    {
+      "name": "PositionGuard",
+      "category": "Integrations",
+      "location": "https://raw.githubusercontent.com/positionguard/positionguard-hubitat/main/packageManifest.json",
+      "description": "Privacy-first family presence — one presence device per member, area-level only, no coordinates on your hub."
+    }
+  ]
+}
