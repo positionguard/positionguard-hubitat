@@ -5,7 +5,7 @@
   "minimumHEVersion": "2.3.0",
   "dateReleased": "2026-07-02",
   "documentationLink": "https://github.com/positionguard/positionguard-hubitat/blob/main/README.md",
-  "communityLink": "https://github.com/positionguard/positionguard-hubitat/discussions",
+  "communityLink": "https://community.hubitat.com/t/release-positionguard-family-presence-one-presence-device-per-family-member-area-level-no-coordinates-on-your-hub/165032",
   "licenseFile": "https://raw.githubusercontent.com/positionguard/positionguard-hubitat/main/LICENSE",
   "releaseNotes": "Initial release: parent app plus one presence child device per group member. Area-level presence only — never GPS coordinates.",
   "category": "Integrations",
