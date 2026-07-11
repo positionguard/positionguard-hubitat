@@ -125,6 +125,18 @@ your Hubitat hub (to install this integration).
 5. Invite family members to the group. They install the app and accept
    the invite. Sharing can be paused per-person at any time.
 6. Confirm positions update on the app's map before checking Hubitat.
+   Location sharing is **off by default** for every member (including
+   you) — each person turns it on in the app when they're ready. A
+   member who hasn't enabled sharing yet appears in Hubitat as
+   `currentArea: unknown` / `sharingStatus: disabled`, which is the
+   integration working, not a bug.
+
+> **Setting up several family phones at once?** Account signup verifies each
+> phone number by SMS, and the verification provider applies anti-abuse limits
+> that can flag many signups done back-to-back. Onboarding a whole household?
+> Stagger the signups — a couple of phones, then a break. If a number does get
+> temporarily blocked, don't retry repeatedly (retries can extend the cooldown);
+> wait a few hours and it clears on its own.
 
 ### 2. Get your API key from the developer portal
 
