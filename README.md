@@ -78,7 +78,7 @@ any-area automations, use the `currentArea` attribute instead of
 - **PositionGuard app**: latest version on iOS App Store
   ([download](https://apps.apple.com/app/id6758687496)). Android support
   is in open beta on [Google Play](https://play.google.com/store/apps/details?id=com.positionguard.app)
-  (US and Sweden for now). If you're in another region or the beta is
+  (US, UK and Sweden for now). If you're in another region or the beta is
   full, mention it in the
   [Discussions](https://github.com/positionguard/positionguard-hubitat/discussions)
   tab and I'll help you get access.
