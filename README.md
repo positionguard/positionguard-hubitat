@@ -39,6 +39,7 @@ capabilities and exposes:
 | `presence` | `present` / `not present` | Whether the member is in the device's designated **presence area** (see below) |
 | `currentArea` | area name, `away`, or `unknown` | The member's area-level state — see the table below |
 | `areaSince` | ISO-8601 UTC timestamp | When the hub observed the current area state begin |
+| `areaSinceLocal` | `yyyy-MM-dd HH:mm:ss`, hub-local | The same instant as `areaSince`, rendered in the hub's local time zone — for dashboards |
 | `sharingStatus` | `active` / `disabled` | Whether the member has paused location sharing |
 
 Every state change carries a human-readable `descriptionText` (e.g.

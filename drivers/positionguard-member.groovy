@@ -20,6 +20,9 @@
  *  This driver must never receive, store, log, or emit GPS coordinates.
  *  Area names and timestamps are the only location-related data it handles.
  *
+ *  Version: 1.1.0 — keep in step with packageManifest.json. HPM update
+ *  detection compares the manifest version only; this line is for humans.
+ *
  *  MIT License — https://github.com/positionguard/positionguard-hubitat
  */
 
@@ -47,6 +50,7 @@ metadata {
 
         attribute "currentArea", "string"    // area name, "away" (in no area), or "unknown" (sharing paused)
         attribute "areaSince", "string"      // ISO-8601 UTC, when the hub observed the current area state begin
+        attribute "areaSinceLocal", "string" // areaSince rendered "yyyy-MM-dd HH:mm:ss" in the hub's local time zone
         attribute "sharingStatus", "string"  // "active" or "disabled" (member paused sharing)
     }
 
@@ -65,6 +69,10 @@ def installed() {
 }
 
 def updated() {
+    // Before the pause-guard below: the local-time rendering is display-only,
+    // so Save Preferences may populate or re-render it even while presence
+    // evaluation stays frozen for a sharing pause.
+    syncAreaSinceLocal(device.currentValue("areaSince"))
     // The presenceArea preference may have changed — re-evaluate presence
     // against the area we already know, without waiting for the next poll.
     // Never re-evaluate while sharing is paused: presence is frozen during a
@@ -77,7 +85,8 @@ def updated() {
 }
 
 def refresh() {
-    // All network I/O lives in the parent app.
+    // Local recompute only — all network I/O lives in the parent app.
+    syncAreaSinceLocal(device.currentValue("areaSince"))
     parent?.pollNow()
 }
 
@@ -120,6 +129,10 @@ void updateFromParent(String areaName, String areaSince, String sharingStatus) {
         sendEvent(name: "areaSince", value: areaSince,
             descriptionText: "${device.displayName} current area since ${areaSince}")
     }
+    // Outside the change-guard above: devices that predate areaSinceLocal
+    // backfill on their first parent update, and a hub time-zone change
+    // re-renders on the next update rather than sticking to the old zone.
+    syncAreaSinceLocal(areaSince ?: device.currentValue("areaSince"))
 
     if (paused) {
         // Presence holds its last value: a pause must never fire an arrival
@@ -148,6 +161,35 @@ private String areaChangeDescription(String area, String prevArea) {
     return (prevArea == AREA_UNKNOWN) ?
         "${device.displayName} is at ${area}" :
         "${device.displayName} arrived at ${area}"
+}
+
+/**
+ *  Emit areaSinceLocal: the areaSince instant rendered in the hub's local
+ *  time zone. areaSince itself must stay ISO-8601 UTC — automations may
+ *  depend on that exact format — so local time is a companion attribute,
+ *  never a change to the original.
+ */
+private void syncAreaSinceLocal(String areaSinceUtc) {
+    if (!areaSinceUtc) return
+    String local = toLocalTime(areaSinceUtc)
+    if (local && local != device.currentValue("areaSinceLocal")) {
+        sendEvent(name: "areaSinceLocal", value: local,
+            descriptionText: "${device.displayName} current area since ${local} (hub local time)")
+    }
+}
+
+private String toLocalTime(String isoUtc) {
+    try {
+        // The parent generates every areaSince value with this exact format;
+        // parse must pin UTC or SimpleDateFormat assumes hub-local time.
+        def parser = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'")
+        parser.setTimeZone(TimeZone.getTimeZone("UTC"))
+        Date instant = parser.parse(isoUtc)
+        return instant.format("yyyy-MM-dd HH:mm:ss", location?.timeZone ?: TimeZone.getDefault())
+    } catch (e) {
+        log.warn "${device.displayName}: could not render '${isoUtc}' as local time (${e})"
+        return null
+    }
 }
 
 private void evaluatePresence(String area) {

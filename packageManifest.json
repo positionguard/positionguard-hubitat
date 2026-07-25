@@ -1,13 +1,13 @@
 {
   "packageName": "PositionGuard",
   "author": "Christer Lundin",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "minimumHEVersion": "2.3.0",
-  "dateReleased": "2026-07-02",
+  "dateReleased": "2026-07-24",
   "documentationLink": "https://github.com/positionguard/positionguard-hubitat/blob/main/README.md",
   "communityLink": "https://community.hubitat.com/t/release-positionguard-family-presence-one-presence-device-per-family-member-area-level-no-coordinates-on-your-hub/165032",
   "licenseFile": "https://raw.githubusercontent.com/positionguard/positionguard-hubitat/main/LICENSE",
-  "releaseNotes": "Initial release: parent app plus one presence child device per group member. Area-level presence only — never GPS coordinates.",
+  "releaseNotes": "v1.1.0: New areaSinceLocal attribute — the 'area since' timestamp rendered in your hub's local time zone, for dashboards. The existing areaSince attribute is unchanged (still ISO-8601 UTC), so current rules keep working. After updating, each member device fills in areaSinceLocal on its next update from the app — or immediately when you tap Refresh on the device page.",
   "category": "Integrations",
   "tags": ["Presence & Location", "Cloud"],
   "apps": [
