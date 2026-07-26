@@ -177,12 +177,15 @@ your Hubitat hub (to install this integration).
 3. Select which group(s) to integrate. You can select multiple groups;
    a member in several selected groups still gets a single device.
 4. Press **Done**. One presence device per member appears within one
-   poll interval (about a minute), labeled with the member's name.
+   poll interval (about a minute), named after the member.
 5. On each member's device page, set the **Presence area** preference
    if something other than "Home" should count as present.
 
-Renaming a member in PositionGuard renames the Hubitat device label
-automatically; the device itself (and your rules) are preserved.
+Renaming a member in PositionGuard updates the Hubitat device's *name*
+automatically; the device itself (and your rules) are preserved. The
+device *label* is yours: set one on the device page and it sticks —
+the integration never overwrites it. Clear the label to display the
+PositionGuard nickname again.
 Members removed from all selected groups have their device deleted.
 
 ---

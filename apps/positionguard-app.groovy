@@ -19,6 +19,9 @@
  *  same reason, raw response bodies are never logged — only paths, statuses,
  *  and item counts.
  *
+ *  Version: 1.2.0 — keep in step with packageManifest.json. HPM update
+ *  detection compares the manifest version only; this line is for humans.
+ *
  *  MIT License — https://github.com/positionguard/positionguard-hubitat
  */
 
@@ -386,21 +389,27 @@ private void syncChild(String memberId, Map cur, Map prev) {
     boolean isNew = false
 
     if (!child) {
-        String label = cur.nickname ?: "PositionGuard member"
+        // The device NAME carries the PositionGuard nickname; the LABEL is
+        // never set here. Hubitat convention: the integration owns the name,
+        // the user owns the label — displayName shows the name until the
+        // user chooses a label of their own, and a manual rename must stick.
+        String deviceName = cur.nickname ?: "PositionGuard member"
         try {
             child = addChildDevice(CHILD_NAMESPACE, CHILD_DRIVER, dni,
-                [name: CHILD_DRIVER, label: label, isComponent: false])
+                [name: deviceName, isComponent: false])
         } catch (e) {
-            log.error "Failed to create child device for '${label}' (${dni}) — " +
+            log.error "Failed to create child device for '${deviceName}' (${dni}) — " +
                 "is the '${CHILD_DRIVER}' driver code installed? ${e}"
             return
         }
-        log.info "Created presence device '${label}' (${dni})"
+        log.info "Created presence device '${deviceName}' (${dni})"
         isNew = true
-    } else if (cur.nickname && child.getLabel() != cur.nickname) {
-        // Display-name change in PositionGuard: relabel, never recreate.
-        log.info "Renaming '${child.getLabel()}' to '${cur.nickname}' (${dni})"
-        child.setLabel(cur.nickname as String)
+    } else if (cur.nickname && child.getName() != cur.nickname) {
+        // Nickname change in PositionGuard: update the device name, never
+        // recreate — and never touch the label, which belongs to the user.
+        log.info "Updating device name '${child.getName()}' to '${cur.nickname}' (${dni}) — " +
+            "PositionGuard nickname changed; any user-set label is untouched"
+        child.setName(cur.nickname as String)
     }
 
     boolean changed = prev == null ||

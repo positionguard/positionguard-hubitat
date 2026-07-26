@@ -1,13 +1,13 @@
 {
   "packageName": "PositionGuard",
   "author": "Christer Lundin",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "minimumHEVersion": "2.3.0",
-  "dateReleased": "2026-07-24",
+  "dateReleased": "2026-07-26",
   "documentationLink": "https://github.com/positionguard/positionguard-hubitat/blob/main/README.md",
   "communityLink": "https://community.hubitat.com/t/release-positionguard-family-presence-one-presence-device-per-family-member-area-level-no-coordinates-on-your-hub/165032",
   "licenseFile": "https://raw.githubusercontent.com/positionguard/positionguard-hubitat/main/LICENSE",
-  "releaseNotes": "v1.1.0: New areaSinceLocal attribute — the 'area since' timestamp rendered in your hub's local time zone, for dashboards. The existing areaSince attribute is unchanged (still ISO-8601 UTC), so current rules keep working. After updating, each member device fills in areaSinceLocal on its next update from the app — or immediately when you tap Refresh on the device page.",
+  "releaseNotes": "v1.2.0: Your device renames now stick. Set your own label on a member device and PositionGuard will never overwrite it — nickname changes from PositionGuard now update the device Name instead (Hubitat convention: the integration owns Name, you own Label). Clear a device's label to go back to displaying the PositionGuard nickname. Existing devices keep their current display name after this update; clear the label once if you'd rather the device follow nickname changes automatically.",
   "category": "Integrations",
   "tags": ["Presence & Location", "Cloud"],
   "apps": [
