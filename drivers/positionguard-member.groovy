@@ -20,7 +20,7 @@
  *  This driver must never receive, store, log, or emit GPS coordinates.
  *  Area names and timestamps are the only location-related data it handles.
  *
- *  Version: 1.2.0 — keep in step with packageManifest.json. HPM update
+ *  Version: 1.3.0 — keep in step with packageManifest.json. HPM update
  *  detection compares the manifest version only; this line is for humans.
  *
  *  MIT License — https://github.com/positionguard/positionguard-hubitat
@@ -52,6 +52,8 @@ metadata {
         attribute "areaSince", "string"      // ISO-8601 UTC, when the hub observed the current area state begin
         attribute "areaSinceLocal", "string" // areaSince rendered "yyyy-MM-dd HH:mm:ss" in the hub's local time zone
         attribute "sharingStatus", "string"  // "active" or "disabled" (member paused sharing)
+        attribute "safetyStatus", "string"   // at_area | in_zone | out_of_zone | stale | unknown
+        attribute "outsideUsualArea", "enum", ["true", "false"] // "true" only on a CONFIRMED out_of_zone
     }
 
     preferences {
@@ -100,8 +102,13 @@ def refresh() {
  *                        (sharing paused)
  *  @param areaSince      ISO-8601 UTC timestamp of when the current area state began
  *  @param sharingStatus  "active" or "disabled"
+ *  @param safety         [status: at_area|in_zone|out_of_zone|stale,
+ *                        area: <name, optional>, ageSeconds: <int, optional>]
+ *                        or null when the server sent no safety fields. The
+ *                        default keeps an older parent app calling the 3-arg
+ *                        shape working: safety then renders as "unknown".
  */
-void updateFromParent(String areaName, String areaSince, String sharingStatus) {
+void updateFromParent(String areaName, String areaSince, String sharingStatus, Map safety = null) {
     String area = areaName ?: NO_AREA
     String prevArea = device.currentValue("currentArea")
     boolean paused = (sharingStatus == "disabled")
@@ -144,6 +151,47 @@ void updateFromParent(String areaName, String areaSince, String sharingStatus) {
         }
     } else {
         evaluatePresence(area)
+    }
+
+    syncSafety(safety, paused)
+}
+
+/**
+ *  Emit safetyStatus and the Rule-Machine-friendly outsideUsualArea pair.
+ *
+ *  safetyStatus renders "unknown" when sharing is paused or when the server
+ *  sent no safety fields (feature off, member muted, public-group record) —
+ *  absence of knowledge must never read as safely-inside. outsideUsualArea
+ *  stays strictly two-valued so RM rules can trigger on it directly: "true"
+ *  only on a CONFIRMED out_of_zone. stale and unknown are "false" — a quiet
+ *  phone is not evidence of being outside; safetyStatus carries the honest
+ *  full state for rules that want to treat those separately.
+ */
+private void syncSafety(Map safety, boolean paused) {
+    String status = (!paused && safety?.status) ? (safety.status as String) : "unknown"
+    if (status != device.currentValue("safetyStatus")) {
+        String desc = safetyChangeDescription(status)
+        sendEvent(name: "safetyStatus", value: status, descriptionText: desc)
+        if (status != "unknown") logText(desc)
+    }
+
+    String outside = (status == "out_of_zone") ? "true" : "false"
+    if (outside != device.currentValue("outsideUsualArea")) {
+        String desc = (outside == "true") ?
+            "${device.displayName} is outside their usual area" :
+            "${device.displayName} is no longer flagged outside their usual area"
+        sendEvent(name: "outsideUsualArea", value: outside, descriptionText: desc)
+        if (outside == "true") logText(desc)
+    }
+}
+
+private String safetyChangeDescription(String status) {
+    switch (status) {
+        case "at_area":     return "${device.displayName} is at a saved place"
+        case "in_zone":     return "${device.displayName} is in their usual area"
+        case "out_of_zone": return "${device.displayName} is outside their usual area"
+        case "stale":       return "${device.displayName} has no recent position"
+        default:            return "${device.displayName}'s safety status is unknown"
     }
 }
 

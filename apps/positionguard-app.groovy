@@ -19,7 +19,7 @@
  *  same reason, raw response bodies are never logged — only paths, statuses,
  *  and item counts.
  *
- *  Version: 1.2.0 — keep in step with packageManifest.json. HPM update
+ *  Version: 1.3.0 — keep in step with packageManifest.json. HPM update
  *  detection compares the manifest version only; this line is for humans.
  *
  *  MIT License — https://github.com/positionguard/positionguard-hubitat
@@ -329,7 +329,10 @@ private void finalizePoll(Map ctx) {
         // instead of showing a stale area.
         String area = (m.sharing == "disabled") ? AREA_UNKNOWN : m.area
         String since = (prev != null && prev.area == area && prev.since) ? prev.since : now
-        Map cur = [nickname: m.nickname, area: area, since: since, sharing: m.sharing]
+        // Paused members carry no safety state: the driver renders "unknown",
+        // matching how currentArea lapses to "unknown" during a pause.
+        Map cur = [nickname: m.nickname, area: area, since: since, sharing: m.sharing,
+                   safety: (m.sharing == "disabled") ? null : m.safety]
         next[id] = cur
         syncChild(id, cur, prev)
     }
@@ -376,7 +379,22 @@ private Map mergeMembers(Map membersByGroup) {
                 break
             }
         }
-        out[id] = [nickname: m.nickname, area: area, sharing: activeRecords ? "active" : "disabled"]
+        // Safety status describes the MEMBER's own usual area, so records
+        // agree wherever the server included it — take the first active
+        // record that carries it (the API omits the fields for public groups,
+        // muted members, or when the feature is off server-side). Names and
+        // an age in seconds only; the coordinate invariant is untouched.
+        Map safety = null
+        for (rec in activeRecords) {
+            if (rec.safety_status) {
+                safety = [status: rec.safety_status as String]
+                if (rec.safety_area) safety.area = rec.safety_area as String
+                if (rec.position_age_seconds != null) safety.ageSeconds = rec.position_age_seconds as Integer
+                break
+            }
+        }
+        out[id] = [nickname: m.nickname, area: area,
+                   sharing: activeRecords ? "active" : "disabled", safety: safety]
     }
     return out
 }
@@ -415,9 +433,19 @@ private void syncChild(String memberId, Map cur, Map prev) {
     boolean changed = prev == null ||
         prev.area != cur.area ||
         prev.since != cur.since ||
-        prev.sharing != cur.sharing
+        prev.sharing != cur.sharing ||
+        prev.safety != cur.safety
     if (isNew || changed) {
-        child.updateFromParent((cur.area ?: NO_AREA) as String, cur.since as String, cur.sharing as String)
+        try {
+            child.updateFromParent((cur.area ?: NO_AREA) as String, cur.since as String,
+                cur.sharing as String, cur.safety as Map)
+        } catch (groovy.lang.MissingMethodException ignored) {
+            // Driver code predates the safety attributes (manual-install skew;
+            // HPM updates both files together). Deliver the presence update
+            // the old signature carries rather than dropping it.
+            child.updateFromParent((cur.area ?: NO_AREA) as String, cur.since as String,
+                cur.sharing as String)
+        }
     }
 }
 

@@ -1,13 +1,13 @@
 {
   "packageName": "PositionGuard",
   "author": "Christer Lundin",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "minimumHEVersion": "2.3.0",
-  "dateReleased": "2026-07-26",
+  "dateReleased": "2026-08-26",
   "documentationLink": "https://github.com/positionguard/positionguard-hubitat/blob/main/README.md",
   "communityLink": "https://community.hubitat.com/t/release-positionguard-family-presence-one-presence-device-per-family-member-area-level-no-coordinates-on-your-hub/165032",
   "licenseFile": "https://raw.githubusercontent.com/positionguard/positionguard-hubitat/main/LICENSE",
-  "releaseNotes": "v1.2.0: Your device renames now stick. Set your own label on a member device and PositionGuard will never overwrite it — nickname changes from PositionGuard now update the device Name instead (Hubitat convention: the integration owns Name, you own Label). Clear a device's label to go back to displaying the PositionGuard nickname. Existing devices keep their current display name after this update; clear the label once if you'd rather the device follow nickname changes automatically.",
+  "releaseNotes": "v1.3.0: Safety Zone status on every member device. Two new attributes: safetyStatus (at_area / in_zone / out_of_zone / stale / unknown — the member's position relative to their own usual area, computed server-side from their saved places) and outsideUsualArea (strictly \"true\"/\"false\", so a Rule Machine trigger on it fires exactly when someone is CONFIRMED outside their usual area — stale or unknown never count as outside). Still area names only, never coordinates. Shows \"unknown\" until the PositionGuard server has the safety feature enabled for your account's groups; no new endpoints and no configuration needed.",
   "category": "Integrations",
   "tags": ["Presence & Location", "Cloud"],
   "apps": [
