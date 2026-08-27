@@ -75,7 +75,7 @@ any-area automations, use the `currentArea` attribute instead of
 
 ### Safety Zone status
 
-PositionGuard's servers compute each member a **usual area** — a zone
+PositionGuard computes each member a **usual area** — a zone
 derived from that member's own saved places, weighted by where they
 actually spend time. Two attributes expose the member's position
 relative to it:
@@ -86,7 +86,7 @@ relative to it:
 | `in_zone` | Not at a saved place, but inside their usual area |
 | `out_of_zone` | A fresh position exists, and it is outside their usual area |
 | `stale` | No recent position — the phone has gone quiet |
-| `unknown` | The server sent no safety data (see below) |
+| `unknown` | PositionGuard sent no safety data (see below) |
 
 `outsideUsualArea` is deliberately just `true` / `false`, so a Rule
 Machine trigger on it fires exactly when someone is **confirmed
@@ -312,8 +312,8 @@ it never requests the endpoint that describes area geometry. You can
 verify this in the source — it's a grep away. The Safety Zone
 attributes keep the same contract: `safetyStatus` and
 `outsideUsualArea` are a status word and a boolean — the usual area's
-location, size, and shape are computed and kept on PositionGuard's
-servers and never reach the hub in any form.
+location, size, and shape are computed and kept by PositionGuard and
+never reach the hub in any form.
 
 When a family member pauses sharing in the app, the integration
 respects this immediately (see "What happens when someone pauses
