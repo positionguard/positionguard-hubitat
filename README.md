@@ -41,6 +41,8 @@ capabilities and exposes:
 | `areaSince` | ISO-8601 UTC timestamp | When the hub observed the current area state begin |
 | `areaSinceLocal` | `yyyy-MM-dd HH:mm:ss`, hub-local | The same instant as `areaSince`, rendered in the hub's local time zone — for dashboards |
 | `sharingStatus` | `active` / `disabled` | Whether the member has paused location sharing |
+| `safetyStatus` | `at_area` / `in_zone` / `out_of_zone` / `stale` / `unknown` | The member's position relative to their own **usual area** — see "Safety Zone status" below |
+| `outsideUsualArea` | `true` / `false` | `true` exactly when the member is **confirmed outside their usual area** — a direct Rule Machine trigger, no comparison logic needed |
 
 Every state change carries a human-readable `descriptionText` (e.g.
 "Sally arrived at School"), so device event logs and notifications read
@@ -70,6 +72,36 @@ if you want a device that means "Sally is at school".
 never in an area named "Home", their presence stays `not present`. For
 any-area automations, use the `currentArea` attribute instead of
 `presence`.
+
+### Safety Zone status
+
+PositionGuard's servers compute each member a **usual area** — a zone
+derived from that member's own saved places, weighted by where they
+actually spend time. Two attributes expose the member's position
+relative to it:
+
+| `safetyStatus` value | Meaning |
+|---|---|
+| `at_area` | At one of their saved places |
+| `in_zone` | Not at a saved place, but inside their usual area |
+| `out_of_zone` | A fresh position exists, and it is outside their usual area |
+| `stale` | No recent position — the phone has gone quiet |
+| `unknown` | The server sent no safety data (see below) |
+
+`outsideUsualArea` is deliberately just `true` / `false`, so a Rule
+Machine trigger on it fires exactly when someone is **confirmed
+outside their usual area** — and at no other time. `stale` maps to
+`false`: a phone that stopped reporting is not evidence of being
+outside, and a dying battery must never set off an outside-zone
+alert. `unknown` maps to `false` for the same reason. Rules that want
+to treat staleness separately can trigger on `safetyStatus` itself.
+
+`safetyStatus` reads `unknown` when there is nothing trustworthy to
+report: the member paused sharing, no selected group is allowed to
+carry it (the member muted the group, or the group is public), or
+Safety Zone status isn't live on their account yet — it's rolling out
+with iOS 2.0 and Android 0.9.0. Absence of data is shown as
+`unknown`, never as safely-inside.
 
 ---
 
@@ -206,6 +238,13 @@ per area is all you need — no extra devices.
 use `%value%` (the new area, `away`, or `unknown`) in the notification
 text.
 
+**Alert when someone is outside their usual area** — trigger on the
+Safety Zone boolean directly: *Trigger:* Custom Attribute → device
+`Sally` → attribute `outsideUsualArea` → value `true` → *Action:* send
+"Sally is outside her usual area". No comparison logic needed — the
+attribute is `true` only on a confirmed `out_of_zone`, so this rule
+never fires on a quiet phone (`stale`) or missing data (`unknown`).
+
 ---
 
 ## Polling and reliability
@@ -258,6 +297,7 @@ What's shared with your hub:
 - Whether each member is in any area of a selected group
 - Which specific area, if any, they're in (`currentArea`)
 - Whether sharing is active or paused
+- The member's Safety Zone status — a status word and a boolean only
 
 What's never shared:
 - Exact GPS coordinates
@@ -269,7 +309,11 @@ appears in any attribute, event, log line, or state variable — at any
 log level, including debug. The integration only calls the group-list
 and group-members endpoints, whose responses contain area *names* only;
 it never requests the endpoint that describes area geometry. You can
-verify this in the source — it's a grep away.
+verify this in the source — it's a grep away. The Safety Zone
+attributes keep the same contract: `safetyStatus` and
+`outsideUsualArea` are a status word and a boolean — the usual area's
+location, size, and shape are computed and kept on PositionGuard's
+servers and never reach the hub in any form.
 
 When a family member pauses sharing in the app, the integration
 respects this immediately (see "What happens when someone pauses
