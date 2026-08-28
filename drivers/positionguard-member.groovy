@@ -20,7 +20,7 @@
  *  This driver must never receive, store, log, or emit GPS coordinates.
  *  Area names and timestamps are the only location-related data it handles.
  *
- *  Version: 1.3.0 — keep in step with packageManifest.json. HPM update
+ *  Version: 1.3.1 — keep in step with packageManifest.json. HPM update
  *  detection compares the manifest version only; this line is for humans.
  *
  *  MIT License — https://github.com/positionguard/positionguard-hubitat

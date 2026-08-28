@@ -201,6 +201,14 @@ your Hubitat hub (to install this integration).
    `https://raw.githubusercontent.com/positionguard/positionguard-hubitat/main/apps/positionguard-app.groovy`
    Save.
 
+**Updating manually:** an update must cover both files — updating only
+one leaves the app and driver on mismatched versions, which shows up as
+a red `MissingMethodException` in the logs on member updates until they
+match again. Driver first here too: open **Drivers Code** →
+PositionGuard Member → **Import** → Save, then **Apps Code** →
+PositionGuard → **Import** → Save. The import URL is remembered from
+installation, so each is a one-click re-fetch — no pasting needed.
+
 ### 4. Configure the integration
 
 1. Go to **Apps** → **Add User App** → **PositionGuard**.

@@ -19,7 +19,7 @@
  *  same reason, raw response bodies are never logged — only paths, statuses,
  *  and item counts.
  *
- *  Version: 1.3.0 — keep in step with packageManifest.json. HPM update
+ *  Version: 1.3.1 — keep in step with packageManifest.json. HPM update
  *  detection compares the manifest version only; this line is for humans.
  *
  *  MIT License — https://github.com/positionguard/positionguard-hubitat
@@ -333,8 +333,19 @@ private void finalizePoll(Map ctx) {
         // matching how currentArea lapses to "unknown" during a pause.
         Map cur = [nickname: m.nickname, area: area, since: since, sharing: m.sharing,
                    safety: (m.sharing == "disabled") ? null : m.safety]
-        next[id] = cur
-        syncChild(id, cur, prev)
+        try {
+            syncChild(id, cur, prev)
+            next[id] = cur
+        } catch (e) {
+            // One member's device throwing must not take down the poll for
+            // every member iterated after them. Hold THIS member's previous
+            // entry, not cur: recording an update the device never received
+            // would suppress the diff and freeze the member permanently, so
+            // keeping prev is what makes the retry fire on the next poll.
+            if (prev != null) next[id] = prev
+            log.error "Failed to update member device for '${cur.nickname ?: id}' — " +
+                "holding this member's last-known state; other members are unaffected. ${e}"
+        }
     }
 
     removeStaleChildren(merged.keySet())
@@ -416,8 +427,7 @@ private void syncChild(String memberId, Map cur, Map prev) {
             child = addChildDevice(CHILD_NAMESPACE, CHILD_DRIVER, dni,
                 [name: deviceName, isComponent: false])
         } catch (e) {
-            log.error "Failed to create child device for '${deviceName}' (${dni}) — " +
-                "is the '${CHILD_DRIVER}' driver code installed? ${e}"
+            log.error childCreationError(deviceName, dni, e)
             return
         }
         log.info "Created presence device '${deviceName}' (${dni})"
@@ -447,6 +457,32 @@ private void syncChild(String memberId, Map cur, Map prev) {
                 cur.sharing as String)
         }
     }
+}
+
+/**
+ *  One accurate sentence for a failed addChildDevice. The two real-world
+ *  causes need opposite fixes, so the message must not guess:
+ *    - UnknownDeviceTypeException — the member driver code is not on the hub
+ *    - a "device network id" IllegalArgumentException — the DNI is already
+ *      taken, usually by an orphaned member device left behind by a previous
+ *      install: it still shows on dashboards but no app owns it, so it never
+ *      updates, and this app cannot create its own until it is removed.
+ *  Matched by class name and message text, not class literals, so the check
+ *  survives platform-version differences in the exact exception classes.
+ */
+private String childCreationError(String deviceName, String dni, Throwable e) {
+    String msg = e.message ?: ""
+    if (e.class.name.endsWith("UnknownDeviceTypeException")) {
+        return "Cannot create '${deviceName}' (${dni}): the '${CHILD_DRIVER}' driver code is not installed " +
+            "on this hub. Install the driver (HPM Repair, or import it from GitHub), then press Poll now."
+    }
+    if (msg.toLowerCase().contains("network id") || msg.toLowerCase().contains("dni")) {
+        return "Cannot create '${deviceName}': device network id ${dni} is already in use by a device " +
+            "this app does not own — usually an orphaned PositionGuard device from a previous install, " +
+            "which never updates. Find it under Devices (search for ${dni}), remove it or change its " +
+            "device network id, then press Poll now. (${msg})"
+    }
+    return "Failed to create child device for '${deviceName}' (${dni}): ${msg ?: e.class.simpleName}"
 }
 
 private void removeStaleChildren(Set activeMemberIds) {
