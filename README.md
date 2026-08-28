@@ -73,7 +73,7 @@ never in an area named "Home", their presence stays `not present`. For
 any-area automations, use the `currentArea` attribute instead of
 `presence`.
 
-### Safety Zone status
+### Safety Zones status
 
 PositionGuard computes each member a **usual area** — a zone
 derived from that member's own saved places, weighted by where they
@@ -100,7 +100,7 @@ to treat staleness separately can trigger on `safetyStatus` itself.
 report: the member paused sharing, no selected group is allowed to
 carry it (the member muted the group, or the group is public), or
 Safety Zone status isn't live on their account yet — it's rolling out
-with iOS 2.0 and Android 0.9.0. Absence of data is shown as
+with iOS 2.0 and Android 0.9. Absence of data is shown as
 `unknown`, never as safely-inside.
 
 ---
