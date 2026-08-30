@@ -8,8 +8,9 @@
  *  last-known-state resilience on transient failures.
  *
  *  Endpoints used (a subset of the HA client — nothing new is invented):
- *    GET /groups                 — list groups; also the API-key validation call
- *    GET /groups/{id}/members    — members with area-level presence, every poll
+ *    GET /groups                  — list groups; also the API-key validation call
+ *    GET /groups/{id}/members     — members with area-level presence, every poll
+ *    GET /groups/{id}/area-counts — per-area member counts, coordinate-free
  *
  *  PRIVACY INVARIANT — area-level presence only:
  *  This app must never request, store, log, or emit GPS coordinates.
@@ -18,6 +19,12 @@
  *  contains area center coordinates, which must never reach the hub. For the
  *  same reason, raw response bodies are never logged — only paths, statuses,
  *  and item counts.
+ *
+ *  /groups/{id}/area-counts IS called and IS permitted: it is the deliberately
+ *  coordinate-free counterpart to /areas — area_id, area_name, and member/stale
+ *  counts only, no lat/lng/radius — added precisely so the count can reach the
+ *  hub without the geometry. If that endpoint ever grows a coordinate field,
+ *  this call must stop.
  *
  *  Version: 1.3.1 — keep in step with packageManifest.json. HPM update
  *  detection compares the manifest version only; this line is for humans.
@@ -32,6 +39,12 @@ import groovy.transform.Field
 @Field static final String DNI_PREFIX = "positionguard-"
 @Field static final String CHILD_DRIVER = "PositionGuard Member"
 @Field static final String CHILD_NAMESPACE = "positionguard"
+
+// Per-(group, area) member-count devices are a second child type, keyed
+// "positionguard-area-{groupId}-{areaId}". This prefix EXTENDS DNI_PREFIX, so
+// removeStaleChildren (member cleanup) must skip them — see the guard there.
+@Field static final String AREA_DNI_PREFIX = "positionguard-area-"
+@Field static final String AREA_DRIVER = "PositionGuard Area"
 
 // Sentinel for "sharing, but in no defined area". Hubitat users expect "away"
 // on dashboards and in event logs, so this deliberately does not reuse the
@@ -290,6 +303,16 @@ def onGroups(resp, Map data) {
             "you may have left them, or they were deleted"
     }
     fetchNextGroupMembers([pending: active, membersByGroup: [:]])
+
+    // Area member counts run alongside the member chain and update a separate
+    // set of per-(group, area) devices. Best-effort and independent: a failure
+    // here (e.g. an older backend that 404s /area-counts) degrades those devices
+    // to unavailable without touching member presence.
+    active.each { gid ->
+        logDebug "GET /groups/${gid}/area-counts"
+        asyncGet("onAreaCounts", "/groups/${gid}/area-counts",
+            [areaGroupId: gid, areaGroupName: groupNames[gid]])
+    }
 }
 
 private void fetchNextGroupMembers(Map ctx) {
@@ -489,10 +512,137 @@ private void removeStaleChildren(Set activeMemberIds) {
     getChildDevices()?.each { child ->
         String dni = child.deviceNetworkId
         if (!dni?.startsWith(DNI_PREFIX)) return
+        // Area-count devices share the DNI_PREFIX root but are not members and
+        // are reconciled separately (removeStaleAreaChildren). Never let member
+        // cleanup delete them.
+        if (dni.startsWith(AREA_DNI_PREFIX)) return
         String memberId = dni.substring(DNI_PREFIX.length())
         if (!activeMemberIds.contains(memberId)) {
             log.info "Removing presence device '${child.displayName}' (${dni}) — " +
                 "member is no longer in any selected group"
+            deleteChildDevice(dni)
+        }
+    }
+}
+
+// ------------------------------------------------------ area member counts
+
+/**
+ *  Per-group area-count response handler, independent of the member chain.
+ *  Updates the per-(group, area) count devices for one group and degrades
+ *  gracefully: a 404 (a backend predating /area-counts) or any non-200 marks
+ *  this group's count devices unavailable with a single DEBUG line — never a
+ *  repeated error, never a device deletion. Auth failures stop polling like
+ *  everywhere else.
+ *
+ *  PRIVACY: /area-counts is coordinate-free (area_id, area_name, counts only).
+ *  Nothing here reads or stores a coordinate.
+ */
+def onAreaCounts(resp, Map data) {
+    String gid = data.areaGroupId as String
+    String gname = (data.areaGroupName ?: gid) as String
+
+    int status = 0
+    try { status = (resp.status ?: 0) as int } catch (ignored) { }
+
+    if (status == 401 || status == 403) {
+        handleAuthFailure(status)
+        return
+    }
+    if (resp.hasError() || status != 200) {
+        logDebug "area-counts unavailable for ${gid} (HTTP ${status ?: '?'}); " +
+            "marking its count devices unavailable"
+        markGroupAreaChildrenUnavailable(gid)
+        return
+    }
+    def json = null
+    try { json = resp.json } catch (e) { json = null }
+    if (!(json instanceof List)) {
+        logDebug "area-counts: unexpected payload shape for ${gid}; marking unavailable"
+        markGroupAreaChildrenUnavailable(gid)
+        return
+    }
+
+    Set<String> liveKeys = [] as Set
+    json.each { entry ->
+        String areaId = entry.area_id as String
+        if (!areaId) return
+        String areaName = (entry.area_name ?: areaId) as String
+        // Tri-state: member_count present => a real count (0 included); absent =>
+        // withheld (public group, archived area, or a compute failure). Absent
+        // must read as unavailable, never 0.
+        Integer memberCount = (entry.member_count != null) ? (entry.member_count as Integer) : null
+        Integer staleCount  = (entry.stale_count  != null) ? (entry.stale_count  as Integer) : null
+        String key = "${gid}-${areaId}".toString()
+
+        if (memberCount == null) {
+            // Withheld. Only reflect it on a device that already exists; never
+            // create a permanently-unavailable device for a public/archived area.
+            def existing = getChildDevice("${AREA_DNI_PREFIX}${key}")
+            if (existing) {
+                liveKeys << key
+                markAreaChildUnavailable(existing)
+            }
+            return
+        }
+        liveKeys << key
+        try {
+            syncAreaChild(gid, gname, areaId, areaName, memberCount, staleCount)
+        } catch (e) {
+            log.error "Failed to update area-count device for '${areaName}' in ${gid} — " +
+                "other areas are unaffected. ${e}"
+        }
+    }
+    removeStaleAreaChildren(gid, liveKeys)
+}
+
+private void syncAreaChild(String gid, String gname, String areaId, String areaName,
+                           Integer memberCount, Integer staleCount) {
+    String dni = "${AREA_DNI_PREFIX}${gid}-${areaId}"
+    def child = getChildDevice(dni)
+    if (!child) {
+        String label = "${gname}: ${areaName} count"
+        try {
+            child = addChildDevice(CHILD_NAMESPACE, AREA_DRIVER, dni,
+                [name: label, isComponent: false])
+        } catch (e) {
+            log.error childCreationError(label, dni, e)
+            return
+        }
+        log.info "Created area-count device '${label}' (${dni})"
+    }
+    Integer fresh = (memberCount != null && staleCount != null) ? (memberCount - staleCount) : null
+    child.updateCounts(memberCount, staleCount, fresh, areaName, gname)
+}
+
+private void markAreaChildUnavailable(child) {
+    try { child.markUnavailable() } catch (groovy.lang.MissingMethodException ignored) { }
+}
+
+/** Mark every existing area-count device of one group unavailable (degradation). */
+private void markGroupAreaChildrenUnavailable(String gid) {
+    String prefix = "${AREA_DNI_PREFIX}${gid}-"
+    getChildDevices()?.each { child ->
+        if (child.deviceNetworkId?.startsWith(prefix)) markAreaChildUnavailable(child)
+    }
+}
+
+/**
+ *  Remove area-count devices for a group whose (group, area) no longer appears
+ *  in that group's SUCCESSFUL area-counts response. Scoped per group and only
+ *  called after a 200, so a 404/degraded group never deletes its devices — they
+ *  are marked unavailable instead.
+ */
+private void removeStaleAreaChildren(String gid, Set<String> liveKeys) {
+    String prefix = "${AREA_DNI_PREFIX}${gid}-"
+    getChildDevices()?.each { child ->
+        String dni = child.deviceNetworkId
+        if (!dni?.startsWith(prefix)) return
+        // Suffix after "positionguard-area-" is "{gid}-{areaId}", the liveKeys form.
+        String key = dni.substring(AREA_DNI_PREFIX.length())
+        if (!liveKeys.contains(key)) {
+            log.info "Removing area-count device '${child.displayName}' (${dni}) — " +
+                "area no longer present in ${gid}"
             deleteChildDevice(dni)
         }
     }

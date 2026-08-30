@@ -39,6 +39,23 @@ class FakeChild {
         if (throwOnUpdate) throw new RuntimeException("injected driver failure")
         updates << [area: area, since: since, sharing: sharing, safety: safety]
     }
+    // Area-count device side (PositionGuard Area driver contract).
+    List countUpdates = []
+    boolean unavailable = false
+    void updateCounts(Integer mc, Integer sc, Integer fc, String an, String gn) {
+        unavailable = false
+        countUpdates << [member: mc, stale: sc, fresh: fc, area: an, group: gn]
+    }
+    void markUnavailable() { unavailable = true }
+    def currentValue(String a) { null }
+}
+
+// Fake async response for onAreaCounts (resp.status / hasError() / json).
+class FakeResp {
+    int status = 200
+    boolean errored = false
+    def json
+    boolean hasError() { errored }
 }
 
 class FakeLog {
@@ -135,4 +152,48 @@ def genMsg = logger.errors[genErrCount]
 assert genMsg.contains("hub database is busy") && !genMsg.contains("orphaned")
 println "T5 PASS: unknown creation failure falls back to the raw error"
 
-println "\nALL 6 SCENARIOS PASS against the real app source"
+// ==== Area member counts (onAreaCounts) ==================================
+app.addBehavior = null // clear T5's injected failure so devices create again
+def ac = { List entries, int status = 200, boolean err = false ->
+    def r = new FakeResp(status: status, errored: err, json: entries)
+    app.onAreaCounts(r, [areaGroupId: "g1", areaGroupName: "Group One"])
+}
+def areaDev = { String areaId -> app.childMap["positionguard-area-g1-${areaId}".toString()] }
+
+// ---- TA1: real counts create devices; member/stale/fresh; 0 is a real 0 --
+ac([[area_id: "a1", area_name: "Home", member_count: 3, stale_count: 1],
+    [area_id: "a2", area_name: "Gym", member_count: 0, stale_count: 0]])
+assert areaDev("a1")?.countUpdates?.last() == [member: 3, stale: 1, fresh: 2, area: "Home", group: "Group One"]
+assert areaDev("a2") != null && areaDev("a2").countUpdates.last().member == 0 : "empty area is a real 0 device, not absent"
+println "TA1 PASS: area-count devices created; member/stale/fresh correct; 0 is real"
+
+// ---- TA2: withheld count -> existing device unavailable, new one not made -
+ac([[area_id: "a1", area_name: "Home"],                                   // absent -> unavailable
+    [area_id: "a2", area_name: "Gym", member_count: 2, stale_count: 0],   // still present
+    [area_id: "a3", area_name: "Shed"]])                                  // absent + new -> no device
+assert areaDev("a1").unavailable : "withheld count marks the existing device unavailable"
+assert areaDev("a3") == null : "a public/archived area (absent) never spawns a permanently-unavailable device"
+assert areaDev("a2").countUpdates.last().member == 2 : "still-present area keeps updating"
+println "TA2 PASS: withheld count -> unavailable on existing, no device for never-counted areas"
+
+// ---- TA3: non-200 (older backend 404) degrades, never deletes -----------
+def errsBefore = logger.errors.size()
+ac(null, 404)
+assert areaDev("a1") != null && areaDev("a2") != null : "a 404 must not delete area devices"
+assert areaDev("a1").unavailable && areaDev("a2").unavailable : "a 404 marks the group's area devices unavailable"
+assert logger.errors.size() == errsBefore : "degradation logs at debug, never error (no log spam)"
+println "TA3 PASS: 404 degrades to unavailable, no deletion, no error spam"
+
+// ---- TA4: area removed from the response -> device deleted ---------------
+ac([[area_id: "a1", area_name: "Home", member_count: 1, stale_count: 0]]) // a2 gone
+assert areaDev("a1") != null && areaDev("a2") == null : "an area dropped from the 200 response is removed"
+println "TA4 PASS: stale area device removed on a successful response"
+
+// ---- TA5: member cleanup must never delete area devices -----------------
+assert app.childMap.keySet().any { it.startsWith("positionguard-area-") }
+app.removeStaleChildren([] as Set) // no active members -> would delete every member device
+assert areaDev("a1") != null : "removeStaleChildren must skip area-count devices (shared DNI root)"
+assert !app.childMap.keySet().any { it.startsWith("positionguard-") && !it.startsWith("positionguard-area-") } : "member devices were cleaned"
+println "TA5 PASS: member cleanup leaves area-count devices untouched"
+
+println "\nALL 6 MEMBER + 5 AREA SCENARIOS PASS against the real app source"
