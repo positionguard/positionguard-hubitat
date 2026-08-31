@@ -180,8 +180,12 @@ private void syncSafety(Map safety, boolean paused) {
         String desc = (outside == "true") ?
             "${device.displayName} is outside their usual area" :
             "${device.displayName} is no longer flagged outside their usual area"
+        // safetyStatus above already logs the human narrative for this same
+        // transition (out_of_zone and outsideUsualArea="true" always change
+        // together). outsideUsualArea is the Rule-Machine boolean mirror: it
+        // emits the event for automations but must NOT re-log the identical
+        // "outside their usual area" sentence — that was the doubled log line.
         sendEvent(name: "outsideUsualArea", value: outside, descriptionText: desc)
-        if (outside == "true") logText(desc)
     }
 }
 
