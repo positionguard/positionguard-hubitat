@@ -52,8 +52,10 @@ metadata {
         attribute "areaSince", "string"      // ISO-8601 UTC, when the hub observed the current area state begin
         attribute "areaSinceLocal", "string" // areaSince rendered "yyyy-MM-dd HH:mm:ss" in the hub's local time zone
         attribute "sharingStatus", "string"  // "active" or "disabled" (member paused sharing)
-        attribute "safetyStatus", "string"   // at_area | in_zone | out_of_zone | stale | unknown
+        attribute "safetyStatus", "string"   // at_area | in_zone | out_of_zone | unknown (stale/paused/no-data all render as unknown — Hubitat has no "unavailable")
         attribute "outsideUsualArea", "enum", ["true", "false"] // "true" only on a CONFIRMED out_of_zone
+        attribute "positionAgeSeconds", "number" // seconds since the member's last position; null when unknown/paused
+        attribute "positionFresh", "enum", ["true", "false"] // server has a fresh (non-stale) position — gate cautious rules on this
     }
 
     preferences {
@@ -159,18 +161,26 @@ void updateFromParent(String areaName, String areaSince, String sharingStatus, M
 /**
  *  Emit safetyStatus and the Rule-Machine-friendly outsideUsualArea pair.
  *
- *  safetyStatus renders "unknown" when sharing is paused or when the server
- *  sent no safety fields (feature off, member muted, public-group record) —
- *  absence of knowledge must never read as safely-inside. outsideUsualArea
- *  stays strictly two-valued so RM rules can trigger on it directly: "true"
- *  only on a CONFIRMED out_of_zone. stale and unknown are "false" — a quiet
- *  phone is not evidence of being outside; safetyStatus carries the honest
- *  full state for rules that want to treat those separately.
+ *  safetyStatus renders "unknown" when sharing is paused, when the server sent
+ *  no safety fields (feature off, member muted, public-group record), or when
+ *  the server reports "stale" — Hubitat has no device-level "unavailable", and a
+ *  stale reading (rare once the server's 50-minute threshold lands) means the
+ *  phone has been dark for the better part of an hour, which "unknown" conveys
+ *  honestly; asserting a last-known tier would answer "where are they" with a
+ *  place they may have left. Absence of knowledge must never read as
+ *  safely-inside. positionFresh / positionAgeSeconds carry the freshness detail
+ *  for rules that want it. outsideUsualArea stays strictly two-valued so RM
+ *  rules can trigger on it directly: "true" only on a CONFIRMED out_of_zone; a
+ *  quiet phone (unknown) is "false", not evidence of being outside.
  */
 private void syncSafety(Map safety, boolean paused) {
-    String status = (!paused && safety?.status) ? (safety.status as String) : "unknown"
+    String serverStatus = (!paused && safety?.status) ? (safety.status as String) : null
+    // No device-level "unavailable" on Hubitat: a "stale" reading renders as
+    // "unknown", the same sentinel used for a sharing pause (see the method
+    // doc). The description is still taken from the real server status.
+    String status = (serverStatus == null || serverStatus == "stale") ? "unknown" : serverStatus
     if (status != device.currentValue("safetyStatus")) {
-        String desc = safetyChangeDescription(status)
+        String desc = safetyChangeDescription(serverStatus)
         sendEvent(name: "safetyStatus", value: status, descriptionText: desc)
         if (status != "unknown") logText(desc)
     }
@@ -186,6 +196,20 @@ private void syncSafety(Map safety, boolean paused) {
         // emits the event for automations but must NOT re-log the identical
         // "outside their usual area" sentence — that was the doubled log line.
         sendEvent(name: "outsideUsualArea", value: outside, descriptionText: desc)
+    }
+
+    // Freshness, exposed unconditionally (independent of the rendered tier) so
+    // cautious rules can gate on it. positionFresh follows the SERVER's
+    // determination — a non-stale tier means the server had a fresh position —
+    // never a client-side age cut; the threshold lives on the server. It is
+    // "false" whenever safetyStatus is "unknown" (stale, paused, or no data).
+    String fresh = (serverStatus != null && serverStatus != "stale") ? "true" : "false"
+    if (fresh != device.currentValue("positionFresh")) {
+        sendEvent(name: "positionFresh", value: fresh)
+    }
+    Integer ageSeconds = (safety?.ageSeconds != null) ? (safety.ageSeconds as Integer) : null
+    if (ageSeconds != device.currentValue("positionAgeSeconds")) {
+        sendEvent(name: "positionAgeSeconds", value: ageSeconds)
     }
 }
 
