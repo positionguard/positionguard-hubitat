@@ -1,15 +1,18 @@
 {
   "packageName": "PositionGuard",
   "author": "Christer Lundin",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "minimumHEVersion": "2.3.0",
-  "dateReleased": "2026-08-28",
+  "dateReleased": "2026-09-02",
   "documentationLink": "https://github.com/positionguard/positionguard-hubitat/blob/main/README.md",
   "communityLink": "https://community.hubitat.com/t/release-positionguard-family-presence-one-presence-device-per-family-member-area-level-no-coordinates-on-your-hub/165032",
   "licenseFile": "https://raw.githubusercontent.com/positionguard/positionguard-hubitat/main/LICENSE",
-  "releaseNotes": "v1.3.1: Resilience — one member device failing to update can no longer stall the poll for other members (that member holds last-known state and retries next poll, everyone else updates normally), and a failed device creation now logs the actual cause: a device-network-id collision (usually an orphaned member device from a previous install) is reported as exactly that, with the fix, instead of blaming missing driver code.\n\nv1.3.0: Safety Zone status on every member device. Two new attributes: safetyStatus (at_area / in_zone / out_of_zone / stale / unknown — the member's position relative to their own usual area, computed server-side from their saved places) and outsideUsualArea (strictly \"true\"/\"false\", so a Rule Machine trigger on it fires exactly when someone is CONFIRMED outside their usual area — stale or unknown never count as outside). Still area names only, never coordinates. Shows \"unknown\" until the PositionGuard server has the safety feature enabled for your account's groups; no new endpoints and no configuration needed.",
+  "releaseNotes": "v1.4.0: Per-area member counts — each area in a group now gets a device reporting how many members are currently inside it, plus a count of members whose position is stale. Coordinate-free: the device reports how many, never where. Useful for occupancy rules — a count of 0 is a reliable 'everyone's out' trigger.\n\nBehavior change: safetyStatus now reports 'unknown' when a member's position has gone stale, instead of 'stale'. A phone that hasn't reported recently is genuinely unknown, and treating it as a location was producing rules that fired on someone who hadn't moved. If you have a rule comparing safetyStatus directly to 'out_of_zone', it will no longer match during stale periods — outsideUsualArea is unaffected and remains strictly true/false.\n\nTwo new attributes: positionAgeSeconds and positionFresh, so rules can gate on data freshness directly. Existing devices may need opening the device page once for the new attributes to appear.\n\nFixed: an out_of_zone transition logged its message twice per poll.",
   "category": "Integrations",
-  "tags": ["Presence & Location", "Cloud"],
+  "tags": [
+    "Presence & Location",
+    "Cloud"
+  ],
   "apps": [
     {
       "id": "803e03ed-b0c8-470c-9ba1-3bbb43f8fc3d",
@@ -27,6 +30,13 @@
       "name": "PositionGuard Member",
       "namespace": "positionguard",
       "location": "https://raw.githubusercontent.com/positionguard/positionguard-hubitat/main/drivers/positionguard-member.groovy",
+      "required": true
+    },
+    {
+      "id": "48457b26-729e-4b73-9804-3c50594b9152",
+      "name": "PositionGuard Area",
+      "namespace": "positionguard",
+      "location": "https://raw.githubusercontent.com/positionguard/positionguard-hubitat/main/drivers/positionguard-area.groovy",
       "required": true
     }
   ]

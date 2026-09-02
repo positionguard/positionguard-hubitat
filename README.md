@@ -154,8 +154,12 @@ empty house.
 - **PositionGuard app**: latest version on the
   [App Store](https://apps.apple.com/app/id6758687496) or
   [Google Play](https://play.google.com/store/apps/details?id=com.positionguard.app).
-  Safety Zone status and area counts require iOS 2.0 / Android 0.9 or
-  later.
+  Android is in Google Play open testing (US, UK and Sweden for now); if
+  you're in another region or the test is full, mention it in the
+  [Discussions](https://github.com/positionguard/positionguard-hubitat/discussions)
+  tab and I'll help you get access. Safety Zone status needs iOS 2.0 /
+  Android 0.9 or later; area member counts are computed server-side and
+  have no app-version requirement.
 - **Hubitat Package Manager (HPM)**: recommended for installation,
   though manual install is supported
 
@@ -228,7 +232,7 @@ your Hubitat hub (to install this integration).
 2. Open HPM → **Install** → **From a URL**.
 3. Paste the manifest URL:
    `https://raw.githubusercontent.com/positionguard/positionguard-hubitat/main/packageManifest.json`
-4. Follow the prompts. HPM installs both the app and the driver, and
+4. Follow the prompts. HPM installs the app and both drivers, and
    will offer future updates.
 
 ### 3b. Manual installation (without HPM)
@@ -236,17 +240,23 @@ your Hubitat hub (to install this integration).
 1. In Hubitat, open **Drivers Code** → **New Driver** → **Import**, and
    paste:
    `https://raw.githubusercontent.com/positionguard/positionguard-hubitat/main/drivers/positionguard-member.groovy`
-   Save. (Install the driver first — the app creates child devices with
-   it.)
-2. Open **Apps Code** → **New App** → **Import**, and paste:
+   Save.
+2. Repeat for the Area driver: **Drivers Code** → **New Driver** →
+   **Import**, and paste:
+   `https://raw.githubusercontent.com/positionguard/positionguard-hubitat/main/drivers/positionguard-area.groovy`
+   Save. (Install both drivers first — the app creates child devices
+   with them.)
+3. Open **Apps Code** → **New App** → **Import**, and paste:
    `https://raw.githubusercontent.com/positionguard/positionguard-hubitat/main/apps/positionguard-app.groovy`
    Save.
 
-**Updating manually:** an update must cover both files — updating only
-one leaves the app and driver on mismatched versions, which shows up as
-a red `MissingMethodException` in the logs on member updates until they
-match again. Driver first here too: open **Drivers Code** →
-PositionGuard Member → **Import** → Save, then **Apps Code** →
+**Updating manually:** an update must cover all three files — updating
+only some leaves the app and drivers on mismatched versions, which
+shows up as a red `MissingMethodException` in the logs (on member
+updates for the Member driver, on area-count device creation for the
+Area driver) until they match again. Drivers first here too: open
+**Drivers Code** → PositionGuard Member → **Import** → Save, then
+PositionGuard Area → **Import** → Save, then **Apps Code** →
 PositionGuard → **Import** → Save. The import URL is remembered from
 installation, so each is a one-click re-fetch — no pasting needed.
 
