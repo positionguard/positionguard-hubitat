@@ -450,7 +450,7 @@ private void syncChild(String memberId, Map cur, Map prev) {
             child = addChildDevice(CHILD_NAMESPACE, CHILD_DRIVER, dni,
                 [name: deviceName, isComponent: false])
         } catch (e) {
-            log.error childCreationError(deviceName, dni, e)
+            log.error childCreationError(deviceName, dni, CHILD_DRIVER, e)
             return
         }
         log.info "Created presence device '${deviceName}' (${dni})"
@@ -485,7 +485,7 @@ private void syncChild(String memberId, Map cur, Map prev) {
 /**
  *  One accurate sentence for a failed addChildDevice. The two real-world
  *  causes need opposite fixes, so the message must not guess:
- *    - UnknownDeviceTypeException — the member driver code is not on the hub
+ *    - UnknownDeviceTypeException — the named driver's code is not on the hub
  *    - a "device network id" IllegalArgumentException — the DNI is already
  *      taken, usually by an orphaned member device left behind by a previous
  *      install: it still shows on dashboards but no app owns it, so it never
@@ -493,10 +493,10 @@ private void syncChild(String memberId, Map cur, Map prev) {
  *  Matched by class name and message text, not class literals, so the check
  *  survives platform-version differences in the exact exception classes.
  */
-private String childCreationError(String deviceName, String dni, Throwable e) {
+private String childCreationError(String deviceName, String dni, String driverName, Throwable e) {
     String msg = e.message ?: ""
     if (e.class.name.endsWith("UnknownDeviceTypeException")) {
-        return "Cannot create '${deviceName}' (${dni}): the '${CHILD_DRIVER}' driver code is not installed " +
+        return "Cannot create '${deviceName}' (${dni}): the '${driverName}' driver code is not installed " +
             "on this hub. Install the driver (HPM Repair, or import it from GitHub), then press Poll now."
     }
     if (msg.toLowerCase().contains("network id") || msg.toLowerCase().contains("dni")) {
@@ -606,7 +606,7 @@ private void syncAreaChild(String gid, String gname, String areaId, String areaN
             child = addChildDevice(CHILD_NAMESPACE, AREA_DRIVER, dni,
                 [name: label, isComponent: false])
         } catch (e) {
-            log.error childCreationError(label, dni, e)
+            log.error childCreationError(label, dni, AREA_DRIVER, e)
             return
         }
         log.info "Created area-count device '${label}' (${dni})"
