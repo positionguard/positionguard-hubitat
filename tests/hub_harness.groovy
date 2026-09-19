@@ -196,4 +196,16 @@ assert areaDev("a1") != null : "removeStaleChildren must skip area-count devices
 assert !app.childMap.keySet().any { it.startsWith("positionguard-") && !it.startsWith("positionguard-area-") } : "member devices were cleaned"
 println "TA5 PASS: member cleanup leaves area-count devices untouched"
 
-println "\nALL 6 MEMBER + 5 AREA SCENARIOS PASS against the real app source"
+// ---- TF1: position_fresh reaches the driver when sent, and only then ------
+binding.state.lastKnown = [:]
+app.addBehavior = null
+Map held = [safety_status: "at_area", safety_area: "Lake House", position_age_seconds: 36000, position_fresh: false]
+Map old = [safety_status: "at_area", safety_area: "Lake House", position_age_seconds: 600]
+poll([rec("H", "Hana", "Lake House", held), rec("O", "Otto", "Lake House", old)])
+def hs = app.childMap[dni("H")].updates[-1].safety
+def os = app.childMap[dni("O")].updates[-1].safety
+assert hs == [status: "at_area", area: "Lake House", ageSeconds: 36000, fresh: false] : hs
+assert os == [status: "at_area", area: "Lake House", ageSeconds: 600] && !os.containsKey("fresh") : os
+println "TF1 PASS: position_fresh passed as safety.fresh; absent on an older server, not false"
+
+println "\nALL 7 MEMBER + 5 AREA SCENARIOS PASS against the real app source"

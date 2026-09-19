@@ -424,6 +424,10 @@ private Map mergeMembers(Map membersByGroup) {
                 safety = [status: rec.safety_status as String]
                 if (rec.safety_area) safety.area = rec.safety_area as String
                 if (rec.position_age_seconds != null) safety.ageSeconds = rec.position_age_seconds as Integer
+                // position_fresh: false marks the server's area hold (at_area kept
+                // through a phone's silence). Older servers never send it; absent,
+                // the driver derives freshness from the status as before.
+                if (rec.position_fresh != null) safety.fresh = (rec.position_fresh as Boolean)
                 break
             }
         }

@@ -55,7 +55,7 @@ metadata {
         attribute "safetyStatus", "string"   // at_area | in_zone | out_of_zone | unknown (stale/paused/no-data all render as unknown — Hubitat has no "unavailable")
         attribute "outsideUsualArea", "enum", ["true", "false"] // "true" only on a CONFIRMED out_of_zone
         attribute "positionAgeSeconds", "number" // seconds since the member's last position; null when unknown/paused
-        attribute "positionFresh", "enum", ["true", "false"] // server has a fresh (non-stale) position — gate cautious rules on this
+        attribute "positionFresh", "enum", ["true", "false"] // server has a fresh position — "false" when stale/paused and during an area hold (at_area from a last-known position); gate cautious rules on this
     }
 
     preferences {
@@ -105,7 +105,9 @@ def refresh() {
  *  @param areaSince      ISO-8601 UTC timestamp of when the current area state began
  *  @param sharingStatus  "active" or "disabled"
  *  @param safety         [status: at_area|in_zone|out_of_zone|stale,
- *                        area: <name, optional>, ageSeconds: <int, optional>]
+ *                        area: <name, optional>, ageSeconds: <int, optional>,
+ *                        fresh: <boolean, optional — the server's
+ *                        position_fresh; absent from older servers>]
  *                        or null when the server sent no safety fields. The
  *                        default keeps an older parent app calling the 3-arg
  *                        shape working: safety then renders as "unknown".
@@ -169,7 +171,14 @@ void updateFromParent(String areaName, String areaSince, String sharingStatus, M
  *  honestly; asserting a last-known tier would answer "where are they" with a
  *  place they may have left. Absence of knowledge must never read as
  *  safely-inside. positionFresh / positionAgeSeconds carry the freshness detail
- *  for rules that want it. outsideUsualArea stays strictly two-valued so RM
+ *  for rules that want it.
+ *
+ *  The area hold: a server with SAFETY_STATUS_AREA_HOLD keeps "at_area" through
+ *  a phone's silence and sends position_fresh false with the true age.
+ *  safetyStatus keeps following the server (no client-side downgrade on age);
+ *  positionFresh goes "false" and the descriptionText says it is a last
+ *  confirmation: "<name> was last confirmed at a saved place <N> min ago".
+ *  outsideUsualArea stays strictly two-valued so RM
  *  rules can trigger on it directly: "true" only on a CONFIRMED out_of_zone; a
  *  quiet phone (unknown) is "false", not evidence of being outside.
  */
@@ -179,10 +188,18 @@ private void syncSafety(Map safety, boolean paused) {
     // "unknown", the same sentinel used for a sharing pause (see the method
     // doc). The description is still taken from the real server status.
     String status = (serverStatus == null || serverStatus == "stale") ? "unknown" : serverStatus
+    Integer ageSeconds = (safety?.ageSeconds != null) ? (safety.ageSeconds as Integer) : null
+    // Held: the server's at_area rests on a last-known position (area hold).
+    // The tier is still the server's; only the narrative changes.
+    boolean held = (serverStatus == "at_area" && safety?.fresh == false)
+    boolean narrated = false
     if (status != device.currentValue("safetyStatus")) {
-        String desc = safetyChangeDescription(serverStatus)
+        String desc = held ? heldDescription(ageSeconds) : safetyChangeDescription(serverStatus)
         sendEvent(name: "safetyStatus", value: status, descriptionText: desc)
-        if (status != "unknown") logText(desc)
+        if (status != "unknown") {
+            logText(desc)
+            narrated = true
+        }
     }
 
     String outside = (status == "out_of_zone") ? "true" : "false"
@@ -200,17 +217,41 @@ private void syncSafety(Map safety, boolean paused) {
 
     // Freshness, exposed unconditionally (independent of the rendered tier) so
     // cautious rules can gate on it. positionFresh follows the SERVER's
-    // determination — a non-stale tier means the server had a fresh position —
-    // never a client-side age cut; the threshold lives on the server. It is
-    // "false" whenever safetyStatus is "unknown" (stale, paused, or no data).
-    String fresh = (serverStatus != null && serverStatus != "stale") ? "true" : "false"
-    if (fresh != device.currentValue("positionFresh")) {
-        sendEvent(name: "positionFresh", value: fresh)
+    // determination, never a client-side age cut; the threshold lives on the
+    // server. When the server sends position_fresh (safety.fresh) that is the
+    // answer; older servers don't, and then a non-stale tier means the server
+    // had a fresh position. It is "false" whenever safetyStatus is "unknown"
+    // (stale, paused, or no data), and during an area hold.
+    String fresh
+    if (serverStatus == null) {
+        fresh = "false"
+    } else if (safety.fresh != null) {
+        fresh = safety.fresh ? "true" : "false"
+    } else {
+        fresh = (serverStatus != "stale") ? "true" : "false"
     }
-    Integer ageSeconds = (safety?.ageSeconds != null) ? (safety.ageSeconds as Integer) : null
+    if (fresh != device.currentValue("positionFresh")) {
+        if (held) {
+            // Entering a hold while already at_area changes no tier, so this is
+            // the event that carries the narrative (once per cycle).
+            String desc = heldDescription(ageSeconds)
+            sendEvent(name: "positionFresh", value: fresh, descriptionText: desc)
+            if (!narrated) logText(desc)
+        } else {
+            sendEvent(name: "positionFresh", value: fresh)
+        }
+    }
     if (ageSeconds != device.currentValue("positionAgeSeconds")) {
         sendEvent(name: "positionAgeSeconds", value: ageSeconds)
     }
+}
+
+private String heldDescription(Integer ageSeconds) {
+    if (ageSeconds == null) {
+        return "${device.displayName} was last confirmed at a saved place; no newer position"
+    }
+    long minutes = Math.round(ageSeconds / 60.0d)
+    return "${device.displayName} was last confirmed at a saved place ${minutes} min ago"
 }
 
 private String safetyChangeDescription(String status) {
