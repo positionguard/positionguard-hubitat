@@ -115,7 +115,7 @@ dying battery must never set off an outside-zone alert.
 A quiet phone last confirmed **inside one of the member's saved places**
 is the exception: PositionGuard holds `at_area` rather than flapping to
 `unknown` overnight. `positionFresh` reads `false` while it does, and the
-event log says "Sally was last confirmed at a saved place 600 min ago".
+event log says "Sally was last confirmed at a saved place 10 h ago".
 Rules that must know someone is there *right now* should also require
 `positionFresh` to be `true`.
 

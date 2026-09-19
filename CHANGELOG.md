@@ -11,7 +11,9 @@ file is the history for people reading the repo.
   says, and `positionFresh` now reads `false` — it read `true` before.
   Servers that don't send the field get the previous behaviour.
 - Entering a hold, the descriptionText reads "<name> was last confirmed
-  at a saved place <N> min ago".
+  at a saved place <age> ago", with the age in minutes under 90 min
+  ("45 min ago") and in hours after, to one decimal when not whole
+  ("10 h ago", "2.5 h ago").
 - No new attributes or capabilities. `presence` and `currentArea` are
   unchanged.
 - The app, member driver and area driver header lines now carry the
