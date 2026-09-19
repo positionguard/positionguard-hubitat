@@ -55,7 +55,7 @@ def update = { d, Map safety, String sharing = "active" ->
     d.updateFromParent("Lake House", "2026-09-18T21:04:12Z", sharing, safety)
 }
 
-String HELD_DESC = "Newman was last confirmed at a saved place 600 min ago"
+String HELD_DESC = "Newman was last confirmed at a saved place 10 h ago"
 
 // ---- F1: older server (no fresh key) — today's derivation -----------------
 def d = load()
@@ -119,4 +119,13 @@ assert !names(d).contains("presence") && !names(d).contains("currentArea")
 assert d.binding.device.values.presence == presence && d.binding.device.values.currentArea == area
 println "F8 PASS: a hold moves no presence or currentArea event"
 
-println "\nALL 8 FRESHNESS SCENARIOS PASS against the real driver source"
+// ---- F9: the hold sentence's age reads as minutes under 90, else hours ----
+[[2700, "45 min"], [5340, "89 min"], [5400, "1.5 h"], [9000, "2.5 h"], [36000, "10 h"], [36060, "10 h"]].each { secs, text ->
+    d = load()
+    update(d, [status: "at_area", ageSeconds: secs, fresh: false])
+    assert event(d, "positionFresh").descriptionText == "Newman was last confirmed at a saved place ${text} ago".toString() :
+        "${secs}s -> ${event(d, 'positionFresh').descriptionText}"
+}
+println "F9 PASS: 2700s '45 min', 5340s '89 min', 5400s '1.5 h', 9000s '2.5 h', 36000s '10 h'"
+
+println "\nALL 9 FRESHNESS SCENARIOS PASS against the real driver source"

@@ -177,7 +177,7 @@ void updateFromParent(String areaName, String areaSince, String sharingStatus, M
  *  a phone's silence and sends position_fresh false with the true age.
  *  safetyStatus keeps following the server (no client-side downgrade on age);
  *  positionFresh goes "false" and the descriptionText says it is a last
- *  confirmation: "<name> was last confirmed at a saved place <N> min ago".
+ *  confirmation: "<name> was last confirmed at a saved place <age> ago" ("45 min", "10 h", "2.5 h").
  *  outsideUsualArea stays strictly two-valued so RM
  *  rules can trigger on it directly: "true" only on a CONFIRMED out_of_zone; a
  *  quiet phone (unknown) is "false", not evidence of being outside.
@@ -250,8 +250,16 @@ private String heldDescription(Integer ageSeconds) {
     if (ageSeconds == null) {
         return "${device.displayName} was last confirmed at a saved place; no newer position"
     }
-    long minutes = Math.round(ageSeconds / 60.0d)
-    return "${device.displayName} was last confirmed at a saved place ${minutes} min ago"
+    // Minutes under 90 min ("45 min"), otherwise hours to one decimal with a
+    // whole number shown bare ("10 h", "2.5 h").
+    String age
+    if (ageSeconds < 90 * 60) {
+        age = "${Math.max(1L, Math.round(ageSeconds / 60.0d))} min"
+    } else {
+        BigDecimal hours = (ageSeconds / 3600.0d).toBigDecimal().setScale(1, java.math.RoundingMode.HALF_UP)
+        age = "${hours.stripTrailingZeros().toPlainString()} h"
+    }
+    return "${device.displayName} was last confirmed at a saved place ${age} ago"
 }
 
 private String safetyChangeDescription(String status) {
