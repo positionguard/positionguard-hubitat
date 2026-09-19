@@ -26,7 +26,7 @@
  *  hub without the geometry. If that endpoint ever grows a coordinate field,
  *  this call must stop.
  *
- *  Version: 1.3.1 — keep in step with packageManifest.json. HPM update
+ *  Version: 1.4.1 — keep in step with packageManifest.json. HPM update
  *  detection compares the manifest version only; this line is for humans.
  *
  *  MIT License — https://github.com/positionguard/positionguard-hubitat

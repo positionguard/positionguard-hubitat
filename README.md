@@ -48,7 +48,7 @@ capabilities and exposes:
 | `sharingStatus` | `active` / `disabled` | Whether the member has paused location sharing |
 | `safetyStatus` | `at_area` / `in_zone` / `out_of_zone` / `unknown` | The member's position relative to their own **usual area** — see "Safety Zone status" below |
 | `outsideUsualArea` | `true` / `false` | `true` exactly when the member is **confirmed outside their usual area** — a direct Rule Machine trigger, no comparison logic needed |
-| `positionFresh` | `true` / `false` | Whether the member's most recent position is recent enough for PositionGuard to trust it. `false` means the phone has gone quiet |
+| `positionFresh` | `true` / `false` | Whether the member's most recent position is recent enough for PositionGuard to trust it. `false` means the phone has gone quiet — including while `safetyStatus` holds `at_area` from a last-known position |
 | `positionAgeSeconds` | integer | Seconds since the member's last reported position, as of the last poll |
 
 Every state change carries a human-readable `descriptionText` (e.g.
@@ -111,6 +111,13 @@ dying battery must never set off an outside-zone alert.
 - No selected group is allowed to carry safety data — the member muted
   the group, or the group is public.
 - Safety Zone status isn't live on their account yet.
+
+A quiet phone last confirmed **inside one of the member's saved places**
+is the exception: PositionGuard holds `at_area` rather than flapping to
+`unknown` overnight. `positionFresh` reads `false` while it does, and the
+event log says "Sally was last confirmed at a saved place 600 min ago".
+Rules that must know someone is there *right now* should also require
+`positionFresh` to be `true`.
 
 Rules that want to react to a phone going quiet — a low-battery
 reminder, say — should trigger on `positionFresh` changing to `false`,

@@ -23,7 +23,7 @@
  *  PRIVACY INVARIANT — area-level only: this driver never receives, stores, logs,
  *  or emits GPS coordinates. It handles names and counts.
  *
- *  Version: 1.3.1 — keep in step with packageManifest.json. HPM update detection
+ *  Version: 1.4.1 — keep in step with packageManifest.json. HPM update detection
  *  compares the manifest version only; this line is for humans.
  *
  *  MIT License — https://github.com/positionguard/positionguard-hubitat
