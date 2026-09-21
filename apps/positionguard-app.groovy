@@ -11,6 +11,9 @@
  *    GET /groups                  — list groups; also the API-key validation call
  *    GET /groups/{id}/members     — members with area-level presence, every poll
  *    GET /groups/{id}/area-counts — per-area member counts, coordinate-free
+ *    POST /areas/{id}/move        — only when an area device's button is pushed
+ *                                   and "Allow this hub to move areas" is on;
+ *                                   no request body (1.5.0)
  *
  *  PRIVACY INVARIANT — area-level presence only:
  *  This app must never request, store, log, or emit GPS coordinates.
@@ -25,6 +28,14 @@
  *  counts only, no lat/lng/radius — added precisely so the count can reach the
  *  hub without the geometry. If that endpoint ever grows a coordinate field,
  *  this call must stop.
+ *
+ *  /areas/{id}/move is coordinate-free in BOTH directions: the request has no
+ *  body at all, and the response carries a distance and an age, never a place
+ *  (backend docs/area-move-api.md). The area is moved to the position
+ *  PositionGuard already holds for the key's owner. The move path has its own
+ *  response handling and never touches polling or the auth-error state — a
+ *  403 there usually means "not your area" or "key lacks areas:move", not a
+ *  bad key, and a rejected key is the poll path's discovery to make.
  *
  *  Version: 1.4.1 — keep in step with packageManifest.json. HPM update
  *  detection compares the manifest version only; this line is for humans.
@@ -126,6 +137,16 @@ def pageMain() {
                 href page: "pageApiKey",
                     title: "Re-enter API key",
                     description: "Validate a new or rotated API key"
+            }
+            section("Moving areas") {
+                input name: "allowAreaMove", type: "bool",
+                    title: "Allow this hub to move areas",
+                    defaultValue: false
+                paragraph "When on, pushing an area device's button moves that area to your phone's " +
+                    "last reported position. It also needs an API key created with " +
+                    "<b>Allow this key to move areas you created</b> — a key's scopes can't be changed, " +
+                    "so an older key needs replacing. Only areas you created can be moved; the hub never " +
+                    "sends or receives coordinates, but the area's new centre is visible to your group."
             }
             section {
                 input name: "btnPollNow", type: "button", title: "Poll now"
@@ -649,6 +670,169 @@ private void removeStaleAreaChildren(String gid, Set<String> liveKeys) {
                 "area no longer present in ${gid}"
             deleteChildDevice(dni)
         }
+    }
+}
+
+// ------------------------------------------------------------- area moves
+
+@Field static final String MOVE_DISABLED =
+    "Moving areas from this hub is turned off. Turn on \"Allow this hub to move areas\" in the PositionGuard app."
+
+/**
+ *  Entry point for an area device's push(). Opt-in twice: this app's
+ *  preference is checked here, before any request; whether the KEY carries
+ *  areas:move is learned from the API's MISSING_SCOPE reply and shown as the
+ *  API words it — there is no way to ask the API for a key's scopes, so no
+ *  pre-check is pretended.
+ *
+ *  POST /areas/{id}/move with NO body: the area goes to the position
+ *  PositionGuard already holds for the key's owner, so there is nothing to
+ *  send and nothing coordinate-shaped ever leaves or reaches the hub.
+ */
+void moveAreaFromDevice(String dni) {
+    def child = getChildDevice(dni)
+    if (!child) return
+    if (settings.allowAreaMove != true) {
+        deliverMoveResult(child, MOVE_DISABLED, false)
+        return
+    }
+    String areaId = areaIdFromDni(dni)
+    if (!areaId) {
+        deliverMoveResult(child, "This device isn't linked to a selected group any more, so the area wasn't moved.", false)
+        return
+    }
+    if (!apiKey()) {
+        deliverMoveResult(child, "No API key is set in the PositionGuard app, so the area wasn't moved.", false)
+        return
+    }
+    String path = "/areas/${areaId}/move"
+    logDebug "POST ${path}"
+    try {
+        asynchttpPost("onAreaMove", [uri: BASE_URL + path, headers: authHeaders(), timeout: 15],
+            [dni: dni, areaId: areaId, path: path])
+    } catch (e) {
+        deliverMoveResult(child, "The move request couldn't be sent (${e.message ?: e.class.simpleName}), so the area wasn't moved.", false)
+    }
+}
+
+/**
+ *  Response handler for the move request. Deliberately separate from
+ *  parseListResponse: it NEVER calls handleAuthFailure, for any status. A 403
+ *  here is "not the owner" or MISSING_SCOPE — neither makes the key invalid for
+ *  polling — and even a 401 is left for the next poll to discover, so a push
+ *  can never stop presence. Every outcome goes to the pushed device only.
+ *
+ *  Wording: a 200 is described here (the API sends facts, not a sentence);
+ *  every other answer shows the API's own "error" message unchanged. Only when
+ *  the API sent no message at all does this say what little is known.
+ *  Raw bodies are never logged, as everywhere in this app.
+ */
+def onAreaMove(resp, Map data) {
+    def child = getChildDevice(data.dni as String)
+    if (!child) return
+
+    int status = 0
+    try { status = (resp.status ?: 0) as int } catch (ignored) { }
+    Map body = moveResponseBody(resp, status)
+    String area = areaLabel(child)
+
+    if (status == 200 && body != null && body.moved != null) {
+        if (body.moved == true) {
+            double metres = (body.distance_m ?: 0) as double
+            deliverMoveResult(child, "${area} moved ${formatDistance(metres)} to your phone's location", true)
+        } else {
+            deliverMoveResult(child, "${area} is already at your phone's location (within 1 m), so it wasn't moved.", false)
+        }
+        return
+    }
+
+    String message = (body?.error instanceof String && body.error) ? body.error as String : null
+    if (status == 429) {
+        String retry = moveRetryAfter(resp, body)
+        log.info "Move of '${area}' rate limited (HTTP 429${retry ? ', Retry-After ' + retry + ' s' : ''})"
+    } else {
+        logDebug "POST ${data.path}: HTTP ${status ?: '?'}${body?.reason ? ' ' + body.reason : ''}${body?.code ? ' ' + body.code : ''}"
+    }
+    if (message) {
+        deliverMoveResult(child, message, false)
+    } else if (status == 0 || status == 408) {
+        deliverMoveResult(child, "No answer from PositionGuard, so it isn't known whether ${area} moved. Check the app before trying again.", false)
+    } else {
+        deliverMoveResult(child, "PositionGuard answered HTTP ${status} without a message, so ${area} may not have moved.", false)
+    }
+}
+
+/** The JSON body of a move response, from the success or the error side; null if none parses. */
+private Map moveResponseBody(resp, int status) {
+    def parsed = null
+    if (status >= 200 && status < 300) {
+        try { parsed = resp.json } catch (ignored) { }
+    } else {
+        String raw = null
+        try { raw = resp.getErrorData() as String } catch (ignored) { }
+        if (raw) {
+            try { parsed = new groovy.json.JsonSlurper().parseText(raw) } catch (ignored) { }
+        }
+    }
+    return (parsed instanceof Map) ? parsed as Map : null
+}
+
+/** Seconds to wait on a 429: the Retry-After header, else the body's retry_after_seconds. */
+private String moveRetryAfter(resp, Map body) {
+    def v = null
+    try {
+        def headers = resp.getHeaders()
+        v = headers?.find { k, val -> (k as String)?.equalsIgnoreCase("Retry-After") }?.value
+    } catch (ignored) { }
+    if (v == null) v = body?.retry_after_seconds
+    return v != null ? v as String : null
+}
+
+/**
+ *  Distance for a person, both units, no guess at the hub's preference:
+ *  metres and feet under 1 km, kilometres and miles from there — one decimal
+ *  under 10, whole numbers above. Rendered without String.format so a hub
+ *  locale with a decimal comma can't change the text.
+ */
+private String formatDistance(double metres) {
+    if (metres < 1000) {
+        return "${Math.round(metres)} m (${Math.round(metres * 3.28084)} ft)"
+    }
+    return "${shortNumber(metres / 1000)} km (${shortNumber(metres / 1609.344)} mi)"
+}
+
+private String shortNumber(double v) {
+    if (v < 10) return (Math.round(v * 10) / 10.0) as String
+    return Math.round(v) as String
+}
+
+private String areaLabel(child) {
+    String name = null
+    try { name = child.currentValue("areaName") as String } catch (ignored) { }
+    return name ?: "The area"
+}
+
+/**
+ *  The area id behind an area device. The DNI is "positionguard-area-{gid}-{areaId}"
+ *  and both ids may contain hyphens, so it is split on a KNOWN group id rather
+ *  than on a hyphen — the longest one that matches, so a group id that is a
+ *  prefix of another can never claim the other's devices.
+ */
+private String areaIdFromDni(String dni) {
+    if (!dni?.startsWith(AREA_DNI_PREFIX)) return null
+    String rest = dni.substring(AREA_DNI_PREFIX.length())
+    String gid = selectedGroupIds().findAll { rest.startsWith(it + "-") }.max { it.length() }
+    if (!gid) return null
+    String areaId = rest.substring(gid.length() + 1)
+    return areaId ?: null
+}
+
+private void deliverMoveResult(child, String result, boolean moved) {
+    try {
+        child.moveResult(result, moved)
+    } catch (groovy.lang.MissingMethodException e) {
+        // App updated without the area driver: the result still reaches the log.
+        log.warn "${result} (update the PositionGuard Area driver to see this on the device)"
     }
 }
 
