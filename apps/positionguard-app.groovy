@@ -37,7 +37,7 @@
  *  403 there usually means "not your area" or "key lacks areas:move", not a
  *  bad key, and a rejected key is the poll path's discovery to make.
  *
- *  Version: 1.4.1 — keep in step with packageManifest.json. HPM update
+ *  Version: 1.5.0 — keep in step with packageManifest.json. HPM update
  *  detection compares the manifest version only; this line is for humans.
  *
  *  MIT License — https://github.com/positionguard/positionguard-hubitat

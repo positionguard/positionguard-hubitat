@@ -34,7 +34,8 @@ PositionGuard API, and manages two kinds of child device:
   Member** driver — presence, current area, and Safety Zone status.
 - One **area count device** per area in each selected group, using the
   **PositionGuard Area** driver — how many members are currently inside
-  that area.
+  that area, and (if you turn it on) a button that moves the area to your
+  phone's location.
 
 Each member device implements Hubitat's `PresenceSensor` and `Refresh`
 capabilities and exposes:
@@ -152,6 +153,78 @@ should act only on confirmed presence, use `freshCount` (which is
 exactly `memberCount` minus `staleCount`), and gate it on
 `countAvailable` being `true` so an API outage can't be read as an
 empty house.
+
+### Moving an area from a dashboard button
+
+Each area count device also has a button. Pushing it moves that area to
+where your phone last reported, so a "move Hotel here" tile is one tap.
+The area keeps its name and radius; only its centre moves.
+
+**Two switches, both off until you turn them on:**
+
+1. In the PositionGuard app on your hub: **Allow this hub to move areas**
+   (under *Moving areas*). While it's off, pushing the button does nothing
+   except set `lastMoveResult` to say so.
+2. An API key created with **Allow this key to move areas you created**
+   at [dev.positionguardai.com](https://dev.positionguardai.com). A key's
+   permissions can't be changed after it's created, so an older key needs
+   replacing: create a new one, then enter it under *Re-enter API key*.
+   The hub can't check a key's permissions in advance. If the key lacks
+   this one, PositionGuard says so the first time you push, and that
+   message is what `lastMoveResult` shows.
+
+**Every area device gets the button**, including areas you didn't
+create. PositionGuard only lets the person who created an area move it.
+On anyone else's area, pushing the button shows PositionGuard's answer,
+"Only the person who created this area can move it." If an area is
+linked to two of your selected groups, it has two devices, and pushing
+either one moves the same area.
+
+| Attribute | Values | Meaning |
+|---|---|---|
+| `lastMoveResult` | a sentence | What happened the last time the button was pushed |
+| `lastMoveAt` | ISO-8601 UTC timestamp | When the area last actually moved. Refusals and "already there" leave it alone |
+
+A move reads like "Hotel moved 341 km (212 mi) to your phone's
+location", or "412 m (1353 ft)" under a kilometre. When the area is
+already within 1 m of your position, it isn't moved and nothing is sent
+to your group.
+
+When PositionGuard refuses, `lastMoveResult` shows its message word for
+word. It refuses when:
+- the area is archived,
+- your location sharing is off,
+- it has no position for you,
+- your last position is too old (about two minutes),
+- it can't tell how accurate your last position was, or
+- your last position is less precise than the area is wide.
+
+It also refuses when the area isn't yours to move, when the area isn't
+found, and when the area was moved less than 30 seconds ago. A refused
+move never affects polling or your presence devices.
+
+**Privacy.** The hub never sends or receives coordinates: the request
+has no body, and the answer is a distance and an age. But moving an
+area to yourself tells the people you share it with where you are.
+Everyone in the area's groups sees its new centre, exactly as if you'd
+moved it in the app. That's why moves are refused while your sharing is
+off.
+
+**Making it a one-tap button in HD+.** The device has Hubitat's
+`PushableButton` and `Momentary` capabilities. In HD+, a tap on a button
+device opens a dialog by default. To make one tap push it, long-press
+the tile, choose **Edit**, and set its **click action** to **Toggle**
+([HD+: Buttons](https://joe-page-software.gitbook.io/hubitat-dashboard/tiles/buttons),
+[Click Action](https://joe-page-software.gitbook.io/hubitat-dashboard/features/click-action)).
+HD+ picks a device type from the device's attributes. If it doesn't show
+this device as a button, change its device type from the same Edit
+screen ([Change Device Type](https://joe-page-software.gitbook.io/hubitat-dashboard/features/change-device-type)).
+
+**Android Auto:** HD+ lets you choose which devices appear in the car
+([HD+: Android Auto](https://joe-page-software.gitbook.io/hubitat-dashboard/features/android-auto)).
+Whether this button works with one tap from Android Auto is unconfirmed
+until a user reports back. If you try it, please tell us in the
+community thread.
 
 ---
 
@@ -388,6 +461,9 @@ log level, including debug. The integration calls three endpoints:
 the group list, the group members, and the per-area member counts.
 Their responses contain area *names* and *counts* only; the
 integration never requests the endpoint that describes area geometry.
+If you turn on area moves, pushing an area device's button calls a
+fourth, the area move. It sends no body and gets back a distance and an
+age, never a place (see "Moving an area from a dashboard button").
 You can verify this in the source — it's a grep away. The Safety Zone
 attributes keep the same contract: `safetyStatus`, `outsideUsualArea`,
 and `positionFresh` are a status word and two booleans, and
@@ -404,9 +480,11 @@ sharing" above).
 
 ## Limitations
 
-This integration is **read-only**. From Hubitat, you cannot create,
-modify, or delete groups, areas, or members; change sharing
-permissions; or send messages or invitations. These actions remain in
+This integration is **read-only**, with one opt-in exception: moving an
+area you created to your phone's location (see "Moving an area from a
+dashboard button"). From Hubitat, you cannot create, rename, resize, or
+delete groups, areas, or members; change sharing permissions; or send
+messages or invitations. These actions remain in
 the PositionGuard app where group members manage their own privacy
 directly.
 

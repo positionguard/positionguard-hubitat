@@ -34,7 +34,7 @@
  *  or emits GPS coordinates. It handles names, counts, and move outcomes
  *  (a distance, never a place).
  *
- *  Version: 1.4.1 — keep in step with packageManifest.json. HPM update detection
+ *  Version: 1.5.0 — keep in step with packageManifest.json. HPM update detection
  *  compares the manifest version only; this line is for humans.
  *
  *  MIT License — https://github.com/positionguard/positionguard-hubitat
